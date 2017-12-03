@@ -202,7 +202,7 @@ describe('core/Idle', () => {
         instance.watch();
         expect(expiry.last())
           .toEqual(
-          new Date(now.getTime() + ((instance.getIdle() + instance.getTimeout()) * 1000)));
+          new Date(now.getTime() + (instance.getIdle() * 1000)));
         instance.stop();
       });
 
@@ -498,7 +498,7 @@ describe('core/Idle', () => {
         instance.stop();
       });
 
-      it('interrupt() with the force parameter set to true calls watch()', fakeAsync(() => {
+      it('interrupt() with the force parameter set to true calls watch() if not timedout', fakeAsync(() => {
         instance.setAutoResume(AutoResume.disabled);
         instance.setIdle(3);
 
@@ -507,10 +507,10 @@ describe('core/Idle', () => {
         instance.watch();
         spyOn(instance, 'watch').and.callThrough();
 
-        expiry.mockNow = new Date(expiry.now().getTime() + instance.getIdle() * 1000);
-        tick(3000);
+        expiry.mockNow = new Date(expiry.now().getTime() + 2000);
+        tick(2000);
 
-        expect(instance.isIdling()).toBe(true);
+        expect(instance.isIdling()).toBe(false);
 
         instance.interrupt(true);
 
@@ -623,7 +623,7 @@ describe('core/Idle', () => {
           instance.stop();
         }));
 
-      it('interrupt() should not call watch if expiry has expired', () => {
+      xit('interrupt() should not call watch if expiry has expired', () => {
         instance.setTimeout(3);
         instance.setIdle(3);
         instance.watch();
@@ -671,6 +671,17 @@ describe('core/Idle', () => {
 
         expect(instance.stop).toHaveBeenCalled();
         expect(instance.clearInterrupts).toHaveBeenCalled();
+      });
+
+      it('watch sets interval to correct value for idle', () => {
+        const spy = spyOn(window, 'setInterval').and.callThrough();
+        const idleInSeconds = 3;
+        instance.setIdle(idleInSeconds);
+
+        instance.watch();
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.calls.first().args[1]).toEqual(idleInSeconds * 1000);
       });
     });
   });

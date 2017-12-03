@@ -215,37 +215,39 @@ export class Idle implements OnDestroy {
    * Starts watching for inactivity.
    */
   watch(skipExpiry?: boolean): void {
-    this.safeClearInterval('idleHandle');
-    this.safeClearInterval('timeoutHandle');
-
-    let timeout = !this.timeoutVal ? 0 : this.timeoutVal;
     if (!skipExpiry) {
-      let value = new Date(this.expiry.now().getTime() + ((this.idle + timeout) * 1000));
+      let value = new Date(this.expiry.now().getTime() + ((this.idle) * 1000));
       this.expiry.last(value);
+
+      const future = value.getTime() - new Date().getTime();
+      console.log(`expiry.last = ${value} which is in ${future} ms`);
     }
 
     if (this.idling) {
       this.toggleState();
     }
-    if (!this.running) {
-      this.startKeepalive();
-      this.toggleInterrupts(true);
+
+    if (!this.running || !this.idleHandle) {
+      this.startWatching();
     }
+  }
 
+  private startWatching() {
+    this.startKeepalive();
+    this.toggleInterrupts(true);
     this.running = true;
-
     let watchFn = () => {
       this.zone.run(() => {
-        let diff = this.getExpiryDiff(timeout);
+        let diff = this.getExpiryDiff();
+
         if (diff > 0) {
-          this.safeClearInterval('idleHandle');
           this.setIdleIntervalOutsideOfZone(watchFn, diff);
         } else {
+          this.safeClearInterval('idleHandle');
           this.toggleState();
         }
       });
     };
-
     this.setIdleIntervalOutsideOfZone(watchFn, this.idle * 1000);
   }
 
@@ -253,6 +255,7 @@ export class Idle implements OnDestroy {
    * Allows protractor tests to call waitForAngular without hanging
    */
   setIdleIntervalOutsideOfZone(watchFn: () => void, frequency: number): void {
+    this.safeClearInterval('idleHandle');
     this.zone.runOutsideAngular(() => {
       this.idleHandle = setInterval(watchFn, frequency);
     });
@@ -303,10 +306,6 @@ export class Idle implements OnDestroy {
       return;
     }
 
-    if (this.timeoutVal && this.expiry.isExpired()) {
-      this.timeout();
-      return;
-    }
     this.onInterrupt.emit(eventArgs);
 
     if (force === true || this.autoResume === AutoResume.idle ||
@@ -335,15 +334,13 @@ export class Idle implements OnDestroy {
         }, 1000);
       }
     } else {
-      this.toggleInterrupts(true);
       this.onIdleEnd.emit(null);
-      this.startKeepalive();
+      this.startWatching();
     }
-
-    this.safeClearInterval('idleHandle');
   }
 
   private setTimoutIntervalOutsideZone(intervalFn: () => void, frequency: number) {
+    this.safeClearInterval('timeoutHandle');
     this.zone.runOutsideAngular(() => {
       this.timeoutHandle = setInterval(() => {
         intervalFn();
@@ -361,10 +358,10 @@ export class Idle implements OnDestroy {
     }
   }
 
-  private getExpiryDiff(timeout: number): number {
+  private getExpiryDiff(): number {
     let now: Date = this.expiry.now();
     let last: Date = this.expiry.last() || now;
-    return last.getTime() - now.getTime() - (timeout * 1000);
+    return last.getTime() - now.getTime();
   }
 
   private doCountdownInZone(): void {
@@ -375,7 +372,7 @@ export class Idle implements OnDestroy {
 
   private doCountdown(): void {
     let timeout = !this.timeoutVal ? 0 : this.timeoutVal;
-    let diff = this.getExpiryDiff(timeout);
+    let diff = this.getExpiryDiff() - timeout * 1000;
     if (diff > 0) {
       this.safeClearInterval('timeoutHandle');
       this.interrupt(true);
